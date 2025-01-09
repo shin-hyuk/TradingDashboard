@@ -1,8 +1,12 @@
 <?php
 if(isset($_FILES['csv']))
 {
-	$connect=mysql_connect('192.168.10.17:3306','jason','Abc123456');
-	mysql_select_db('stat_unisoft_hk',$connect) or die(mysql_error());
+	$connect = new mysqli('192.168.10.17', 'jason', 'Abc123456', 'stat_unisoft_hk', 3306);
+
+	// Check the connection
+	if ($connect->connect_error) {
+		die("Database connection failed: " . $connect->connect_error);
+	}
 
 	if($_FILES['csv']['size']>0)
 	{
