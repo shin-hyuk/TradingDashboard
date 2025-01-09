@@ -13,21 +13,21 @@ if(empty($_GET['pair']))
 	$_GET['pair']="BTCUSDT";
 
 //format date
-if(!empty($_GET[date_from]))
-	$date_from=date('Y-m-d',strtotime($_GET[date_from]));
+if(!empty($_GET['date_from']))
+	$date_from=date('Y-m-d',strtotime($_GET['date_from']));
 else
-	$_GET[date_from]=$date_from=date('Y-m-d');
+	$_GET['date_from']=$date_from=date('Y-m-d');
 
-if(!empty($_GET[date_to]))
-	$date_to=date('Y-m-d',strtotime($_GET[date_to]));
+if(!empty($_GET['date_to']))
+	$date_to=date('Y-m-d',strtotime($_GET['date_to']));
 else
 	$_GET[date_to]=$date_to=date('Y-m-d');
 
 //date query
-if(!empty($_GET[date_from]))
-	$query=" AND date>='$_GET[date_from]'";
-if(!empty($_GET[date_to]))
-	$query.=" AND date<='$_GET[date_to]'";
+if(!empty($_GET['date_from']))
+	$query=" AND date>='$_GET['date_from']'";
+if(!empty($_GET['date_to']))
+	$query.=" AND date<='$_GET['date_to']'";
 
 //day query
 if(empty($_GET['day']))
@@ -45,18 +45,18 @@ else
 }
 
 //exclude query
-if($_GET[exclude_change]>0)
+if($_GET['exclude_change']>0)
 {
-	$query_exclude.=" AND ABS(`23`-`00`)<$_GET[exclude_change]";
+	$query_exclude.=" AND ABS(`23`-`00`)<$_GET['exclude_change']";
 }
-if($_GET[exclude_change_per]>0)
+if($_GET['exclude_change_per']>0)
 {
-	$query_exclude.=" AND ABS((`23`-`00`)/`00`*100)<$_GET[exclude_change_per]";
+	$query_exclude.=" AND ABS((`23`-`00`)/`00`*100)<$_GET['exclude_change_per']";
 }
 
 //query data
 $data=array();
-$sql="SELECT * FROM $_GET[pair] WHERE 1 $query $query_day $query_exclude ORDER BY date DESC";
+$sql="SELECT * FROM $_GET['pair'] WHERE 1 $query $query_day $query_exclude ORDER BY date DESC";
 //echo $sql;
 $result=mysql_query($sql) or die(mysql_error());
 while($row=mysql_fetch_assoc($result))
@@ -106,9 +106,9 @@ foreach($data as $key=>$row)
 
 //define date range
 $range=array_column($data,'date');
-if(empty($_GET[date_from]))
+if(empty($_GET['date_from']))
 	$date_from=min($range);
-if(empty($_GET[date_to]))
+if(empty($_GET['date_to']))
 	$date_to=max($range);
 
 //stat : high low count
@@ -187,7 +187,7 @@ $diff_count_down=array();
 
 foreach($data as $row)
 {
-	$sql="SELECT * FROM ".$_GET[pair]."_diff WHERE `date`='$row[date]'";
+	$sql="SELECT * FROM ".$_GET['pair']."_diff WHERE `date`='$row[date]'";
 	$result_diff=mysql_query($sql);
 	if(mysql_num_rows($result_diff)<>1)
 	{
@@ -455,8 +455,8 @@ table {border-collapse:collapse;border:1px solid grey}
 <script type="text/javascript">
 $(function() {
 	//set vars
-	$("[name=exclude_change]").val("<?=$_GET[exclude_change]?>").change();
-	$("[name=exclude_change_per]").val("<?=$_GET[exclude_change_per]?>").change();
+	$("[name=exclude_change]").val("<?=$_GET['exclude_change']?>").change();
+	$("[name=exclude_change_per]").val("<?=$_GET['exclude_change_per']?>").change();
 
 	//define some data
 	var data = <?=$data?>;
@@ -732,7 +732,7 @@ $(function() {
 </script>
 <form method="get">
 <a href='http://stat.unisoft.hk'><button type="button">&#8962; Home</button></a>
-<input type="hidden" name="pair" value="<?=$_GET[pair]?>"/>
+<input type="hidden" name="pair" value="<?=$_GET['pair']?>"/>
 Date
 <input type="date" name="date_from" value="<?=$date_from?>"/> ~ <input type="date" name="date_to" value="<?=$date_to?>"/>
 <input type="submit" name="go" value="Go" style="width:50px"/>
@@ -789,8 +789,8 @@ Exclude Change % >
 	<option value="1">1%</option>
 	<option value="0">Reset</option>
 </select>
-<a href="period.php?pair=<?=$_GET[pair]?>&date_from=<?=$date_from?>&date_to=<?=$date_to?>" target="_BLANK"><button type="button">&#128279; Period Diff</button></a>
-<a href="holiday.php?pair=<?=$_GET[pair]?>" target="_BLANK"><button type="button">&#128279; Holiday</button></a>
+<a href="period.php?pair=<?=$_GET['pair']?>&date_from=<?=$date_from?>&date_to=<?=$date_to?>" target="_BLANK"><button type="button">&#128279; Period Diff</button></a>
+<a href="holiday.php?pair=<?=$_GET['pair']?>" target="_BLANK"><button type="button">&#128279; Holiday</button></a>
 </form>
 <br/>
 <table border="1" width="50%">
@@ -870,7 +870,7 @@ Hour Differences (Amount)
 Day High and Low Hour Count
 <div id="hlcount-table"></div>
 <br/>
-<a href="raw.php?pair=<?=$_GET[pair]?>" target="_blank">Raw</a>
+<a href="raw.php?pair=<?=$_GET['pair']?>" target="_blank">Raw</a>
 <button type="button" id="download-raw">Download</button>
 <div id="data-table"></div>
 </body>
