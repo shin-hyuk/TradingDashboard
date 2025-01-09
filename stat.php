@@ -47,11 +47,11 @@ else
 //exclude query
 if($_GET['exclude_change']>0)
 {
-	$query_exclude.=" AND ABS(`23`-`00`)<$_GET['exclude_change']";
+	$query_exclude .= " AND ABS(`23`-`00`) < " . $_GET['exclude_change'];
 }
 if($_GET['exclude_change_per']>0)
 {
-	$query_exclude.=" AND ABS((`23`-`00`)/`00`*100)<$_GET['exclude_change_per']";
+	$query_exclude .= " AND ABS((`23`-`00`)/`00`*100) < " . $_GET['exclude_change_per'];
 }
 
 //query data
