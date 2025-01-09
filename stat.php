@@ -1,5 +1,5 @@
 <?php
-$connect = new mysqli('192.168.10.17', 'jason', 'Abc123456', 'stat_unisoft_hk', 3306);
+$connect = new mysqli('192.168.10.177', 'jason', 'Abc123456', 'stat_unisoft_hk', 3306);
 
 // Check the connection
 if ($connect->connect_error) {
