@@ -25,9 +25,9 @@ else
 
 //date query
 if(!empty($_GET['date_from']))
-	$query=" AND date>='$_GET['date_from']'";
+	$query=" AND date>='$_GET[\'date_from\']'";
 if(!empty($_GET['date_to']))
-	$query.=" AND date<='$_GET['date_to']'";
+	$query.=" AND date<='$_GET[\'date_to\']'";
 
 //day query
 if(empty($_GET['day']))
