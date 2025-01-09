@@ -1,8 +1,8 @@
 <?php
 if(isset($_FILES['csv']))
 {
-	$connect=mysql_connect('127.0.0.1:6446','crypto_stat','crypto2023');
-	mysql_select_db('_crypto_stat',$connect) or die(mysql_error());
+	$connect=mysql_connect('192.168.10.17:3306','jason','Abc123456');
+	mysql_select_db('stat_unisoft_hk',$connect) or die(mysql_error());
 
 	if($_FILES['csv']['size']>0)
 	{
