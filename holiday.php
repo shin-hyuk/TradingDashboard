@@ -9,8 +9,8 @@ if ($connect->connect_error) {
 ini_set('memory_limit', '512M');
 ini_set('max_execution_time', '60');
 
-if(empty($_GET[pair]))
-	$_GET[pair]="BTCUSDT";
+if(empty($_GET['pair']))
+	$_GET['pair']="BTCUSDT";
 
 if(empty($_GET[interval]))
 	$_GET[interval]=7;
