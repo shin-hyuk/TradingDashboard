@@ -1,5 +1,5 @@
 <?php
-$connect = new mysqli('localhost', 'jason', 'Abc123456', 'stat_unisoft_hk', 3306);
+$connect = new mysqli('192.168.10.177', 'jason', 'Abc123456', 'stat_unisoft_hk', 3306);
 
 // Check the connection
 if ($connect->connect_error) {
@@ -21,7 +21,11 @@ else
 if(!empty($_GET['date_to']))
 	$date_to=date('Y-m-d',strtotime($_GET['date_to']));
 else
-	$_GET[date_to]=$date_to=date('Y-m-d');
+	$_GET['date_to']=$date_to=date('Y-m-d');
+
+$_GET['date_from'] = '2017-12-31';
+$_GET['date_to'] = '2024-12-31';
+$query = $query_day = $query_exclude = '';
 
 //date query
 if(!empty($_GET['date_from']))
@@ -45,63 +49,85 @@ else
 }
 
 //exclude query
-if($_GET['exclude_change']>0)
+if(isset($_GET['exclude_change']) && $_GET['exclude_change'] > 0)
 {
 	$query_exclude .= " AND ABS(`23`-`00`) < " . $_GET['exclude_change'];
 }
-if($_GET['exclude_change_per']>0)
+if(isset($_GET['exclude_change_per']) && $_GET['exclude_change_per'] > 0)
 {
 	$query_exclude .= " AND ABS((`23`-`00`)/`00`*100) < " . $_GET['exclude_change_per'];
 }
 
 //query data
 $data=array();
-$sql="SELECT * FROM $_GET['pair'] WHERE 1 $query $query_day $query_exclude ORDER BY date DESC";
+$sql = "SELECT * FROM " . $_GET['pair'] . " WHERE 1 " . $query . " " . $query_day . " " . $query_exclude . " ORDER BY date DESC";
+
 //echo $sql;
-$result=mysql_query($sql) or die(mysql_error());
-while($row=mysql_fetch_assoc($result))
-{
-	$data[]=$row;
+if (!$result = $connect->query($sql)) die("Query failed: " . $connect->error);
+while ($row = $result->fetch_assoc()) {
+    $data[] = $row;
 }
+$data = array_filter($data, function ($row) {
+    for ($hour = 0; $hour <= 23; $hour++) {
+        $column = sprintf('%02d', $hour); // Format as 00, 01, ..., 23
+        if (isset($row[$column]) && $row[$column] == 0) {
+            return false; // Exclude this row
+        }
+    }
+    return true; // Keep this row
+});
+
 //add day
+//print_r($data);
 reset($data);
 foreach($data as $key=>$row)
 {
-	$data[$key][mid]=intval(($row[high]+$row[low])/2);
-	$data[$key][volatility]=intval($row[high]-$row[low]);
-	$data[$key][day]=date('N',strtotime($row[date]));
-	$data[$key][change_per]=number_format(($row['23']-$row['00'])/$row['00']*100,1);
+	$data[$key]['mid']=intval(($row['high']+$row['low'])/2);
+	$data[$key]['volatility']=intval($row['high']-$row['low']);
+	$data[$key]['day']=date('N',strtotime($row['date']));
+	$data[$key]['change_per']=number_format(($row['23']-$row['00'])/$row['00']*100,1);
 }
+
 //count - changes
 $count_up=$count_down=0;
 
 //add change
 reset($data);
+
+$count_day = [];
+$avg_day = [];
+$avg_volatility = [];
+
 foreach($data as $key=>$row)
 {
-	$data[$key][change]=round($row['23']-$row['00'],0);
+	$data[$key]['change']=round($row['23']-$row['00'],0);
+
+	$day = $data[$key]['day'];
+	$count_day[$day] = $count_day[$day] ?? ['up' => 0, 'down' => 0];
+    $avg_day[$day] = $avg_day[$day] ?? ['count' => 0, 'amount' => 0, 'per' => 0];
+    $avg_volatility[$day] = $avg_volatility[$day] ?? ['count' => 0, 'amount' => 0, 'per' => 0];
 
 	//count changes
-	if($data[$key][change]>0)
+	if($data[$key]['change']>0)
 	{
 		$count_up++;
-		$count_day[$data[$key][day]][up]++;
+		$count_day[$data[$key]['day']]['up']++;
 	}
 	else
 	{
 		$count_down++;
-		$count_day[$data[$key][day]][down]++;
+		$count_day[$data[$key]['day']]['down']++;
 	}
 
 	//average amount
-	$avg_day[$data[$key][day]][count]++;
-	$avg_day[$data[$key][day]][amount]+=($data[$key][change]);
-	$avg_day[$data[$key][day]][per]+=($data[$key][change_per]);
+	$avg_day[$data[$key]['day']]['count']++;
+	$avg_day[$data[$key]['day']]['amount']+=($data[$key]['change']);
+	$avg_day[$data[$key]['day']]['per']+=($data[$key]['change_per']);
 
 	//average volatility
-	$avg_volatility[$data[$key][day]][count]++;
-	$avg_volatility[$data[$key][day]][amount]+=abs($data[$key][volatility]);
-	$avg_volatility[$data[$key][day]][per]+=abs($data[$key][volatility]/$data[$key]["00"]*100);
+	$avg_volatility[$data[$key]['day']]['count']++;
+	$avg_volatility[$data[$key]['day']]['amount']+=abs($data[$key]['volatility']);
+	$avg_volatility[$data[$key]['day']]['per']+=abs($data[$key]['volatility']/$data[$key]["00"]*100);
 }
 
 //define date range
@@ -118,13 +144,14 @@ $hour_high_count=array_count_values($hour_high);
 $hour_low_count =array_count_values($hour_low);
 
 $data_hlcount=array();
+$data_count_high = $data_count_low = '';
 for($h=0;$h<24;$h++)
 {
-	$data_hlcount[$h][hour]=sprintf('%02d',$h);
-	$data_hlcount[$h][high]=$hour_high_count[$h];
-	$data_hlcount[$h][high_per]=number_format($hour_high_count[$h]/array_sum($hour_high_count)*100,1);
-	$data_hlcount[$h][low] =$hour_low_count[$h];
-	$data_hlcount[$h][low_per]=number_format($hour_low_count[$h]/array_sum($hour_low_count)*100,1);
+	$data_hlcount[$h]['hour']=sprintf('%02d',$h);
+	$data_hlcount[$h]['high']=$hour_high_count[$h];
+	$data_hlcount[$h]['high_per']=number_format($hour_high_count[$h]/array_sum($hour_high_count)*100,1);
+	$data_hlcount[$h]['low'] =$hour_low_count[$h];
+	$data_hlcount[$h]['low_per']=number_format($hour_low_count[$h]/array_sum($hour_low_count)*100,1);
 
 	$data_count_high.=','.intval($hour_high_count[$h]);
 	$data_count_low.=',-'.intval($hour_low_count[$h]);
@@ -135,61 +162,59 @@ $data_count_low=substr($data_count_low,1);
 
 //Change count
 $count_up_per=intval($count_up/($count_up+$count_down)*100);
-$count_day[1][per]=intval($count_day[1][up]/($count_day[1][up]+$count_day[1][down])*100);
-$count_day[2][per]=intval($count_day[2][up]/($count_day[2][up]+$count_day[2][down])*100);
-$count_day[3][per]=intval($count_day[3][up]/($count_day[3][up]+$count_day[3][down])*100);
-$count_day[4][per]=intval($count_day[4][up]/($count_day[4][up]+$count_day[4][down])*100);
-$count_day[5][per]=intval($count_day[5][up]/($count_day[5][up]+$count_day[5][down])*100);
-$count_day[6][per]=intval($count_day[6][up]/($count_day[6][up]+$count_day[6][down])*100);
-$count_day[7][per]=intval($count_day[7][up]/($count_day[7][up]+$count_day[7][down])*100);
+$count_day[1]['per']=intval($count_day[1]['up']/($count_day[1]['up']+$count_day[1]['down'])*100);
+$count_day[2]['per']=intval($count_day[2]['up']/($count_day[2]['up']+$count_day[2]['down'])*100);
+$count_day[3]['per']=intval($count_day[3]['up']/($count_day[3]['up']+$count_day[3]['down'])*100);
+$count_day[4]['per']=intval($count_day[4]['up']/($count_day[4]['up']+$count_day[4]['down'])*100);
+$count_day[5]['per']=intval($count_day[5]['up']/($count_day[5]['up']+$count_day[5]['down'])*100);
+$count_day[6]['per']=intval($count_day[6]['up']/($count_day[6]['up']+$count_day[6]['down'])*100);
+$count_day[7]['per']=intval($count_day[7]['up']/($count_day[7]['up']+$count_day[7]['down'])*100);
 
 //Average amount
-$avg_amount=intval(($avg_day[1][amount]+$avg_day[2][amount]+$avg_day[3][amount]+$avg_day[4][amount]+$avg_day[5][amount]+$avg_day[6][amount]+$avg_day[7][amount])/(($count_up+$count_down)));
-$avg_per=intval(($avg_day[1][per]+$avg_day[2][per]+$avg_day[3][per]+$avg_day[4][per]+$avg_day[5][per]+$avg_day[6][per]+$avg_day[7][per])/(($count_up+$count_down)));
-$avg_day[1][amount]	=intval($avg_day[1][amount]	/$avg_day[1][count]);
-$avg_day[1][per]	=intval($avg_day[1][per]	/$avg_day[1][count]);
-$avg_day[2][amount]	=intval($avg_day[2][amount]	/$avg_day[2][count]);
-$avg_day[2][per]	=intval($avg_day[2][per]	/$avg_day[2][count]);
-$avg_day[3][amount]	=intval($avg_day[3][amount]	/$avg_day[3][count]);
-$avg_day[3][per]	=intval($avg_day[3][per]	/$avg_day[3][count]);
-$avg_day[4][amount]	=intval($avg_day[4][amount]	/$avg_day[4][count]);
-$avg_day[4][per]	=intval($avg_day[4][per]	/$avg_day[4][count]);
-$avg_day[5][amount]	=intval($avg_day[5][amount]	/$avg_day[5][count]);
-$avg_day[5][per]	=intval($avg_day[5][per]	/$avg_day[5][count]);
-$avg_day[6][amount]	=intval($avg_day[6][amount]	/$avg_day[6][count]);
-$avg_day[6][per]	=intval($avg_day[6][per]	/$avg_day[7][count]);
-$avg_day[7][amount]	=intval($avg_day[7][amount]	/$avg_day[7][count]);
-$avg_day[7][per]	=intval($avg_day[7][per]	/$avg_day[7][count]);
+$avg_amount=intval(($avg_day[1]['amount']+$avg_day[2]['amount']+$avg_day[3]['amount']+$avg_day[4]['amount']+$avg_day[5]['amount']+$avg_day[6]['amount']+$avg_day[7]['amount'])/(($count_up+$count_down)));
+$avg_per=intval(($avg_day[1]['per']+$avg_day[2]['per']+$avg_day[3]['per']+$avg_day[4]['per']+$avg_day[5]['per']+$avg_day[6]['per']+$avg_day[7]['per'])/(($count_up+$count_down)));
+$avg_day[1]['amount']	=intval($avg_day[1]['amount']	/$avg_day[1]['count']);
+$avg_day[1]['per']	=intval($avg_day[1]['per']	/$avg_day[1]['count']);
+$avg_day[2]['amount']	=intval($avg_day[2]['amount']	/$avg_day[2]['count']);
+$avg_day[2]['per']	=intval($avg_day[2]['per']	/$avg_day[2]['count']);
+$avg_day[3]['amount']	=intval($avg_day[3]['amount']	/$avg_day[3]['count']);
+$avg_day[3]['per']	=intval($avg_day[3]['per']	/$avg_day[3]['count']);
+$avg_day[4]['amount']	=intval($avg_day[4]['amount']	/$avg_day[4]['count']);
+$avg_day[4]['per']	=intval($avg_day[4]['per']	/$avg_day[4]['count']);
+$avg_day[5]['amount']	=intval($avg_day[5]['amount']	/$avg_day[5]['count']);
+$avg_day[5]['per']	=intval($avg_day[5]['per']	/$avg_day[5]['count']);
+$avg_day[6]['amount']	=intval($avg_day[6]['amount']	/$avg_day[6]['count']);
+$avg_day[6]['per']	=intval($avg_day[6]['per']	/$avg_day[7]['count']);
+$avg_day[7]['amount']	=intval($avg_day[7]['amount']	/$avg_day[7]['count']);
+$avg_day[7]['per']	=intval($avg_day[7]['per']	/$avg_day[7]['count']);
 
 //Average volatility
-$avg_volatility_amount=intval(($avg_volatility[1][amount]+$avg_volatility[2][amount]+$avg_volatility[3][amount]+$avg_volatility[4][amount]+$avg_volatility[5][amount]+$avg_volatility[6][amount]+$avg_volatility[7][amount])/(($count_up+$count_down)));
-$avg_volatility_per=intval(($avg_volatility[1][per]+$avg_volatility[2][per]+$avg_volatility[3][per]+$avg_volatility[4][per]+$avg_volatility[5][per]+$avg_volatility[6][per]+$avg_volatility[7][per])/(($count_up+$count_down)));
-$avg_volatility[1][amount]	=intval($avg_volatility[1][amount]	/$avg_volatility[1][count]);
-$avg_volatility[1][per]	=intval($avg_volatility[1][per]	/$avg_volatility[1][count]);
-$avg_volatility[2][amount]	=intval($avg_volatility[2][amount]	/$avg_volatility[2][count]);
-$avg_volatility[2][per]	=intval($avg_volatility[2][per]	/$avg_volatility[2][count]);
-$avg_volatility[3][amount]	=intval($avg_volatility[3][amount]	/$avg_volatility[3][count]);
-$avg_volatility[3][per]	=intval($avg_volatility[3][per]	/$avg_volatility[3][count]);
-$avg_volatility[4][amount]	=intval($avg_volatility[4][amount]	/$avg_volatility[4][count]);
-$avg_volatility[4][per]	=intval($avg_volatility[4][per]	/$avg_volatility[4][count]);
-$avg_volatility[5][amount]	=intval($avg_volatility[5][amount]	/$avg_volatility[5][count]);
-$avg_volatility[5][per]	=intval($avg_volatility[5][per]	/$avg_volatility[5][count]);
-$avg_volatility[6][amount]	=intval($avg_volatility[6][amount]	/$avg_volatility[6][count]);
-$avg_volatility[6][per]	=intval($avg_volatility[6][per]	/$avg_volatility[7][count]);
-$avg_volatility[7][amount]	=intval($avg_volatility[7][amount]	/$avg_volatility[7][count]);
-$avg_volatility[7][per]	=intval($avg_volatility[7][per]	/$avg_volatility[7][count]);
+$avg_volatility_amount=intval(($avg_volatility[1]['amount']+$avg_volatility[2]['amount']+$avg_volatility[3]['amount']+$avg_volatility[4]['amount']+$avg_volatility[5]['amount']+$avg_volatility[6]['amount']+$avg_volatility[7]['amount'])/(($count_up+$count_down)));
+$avg_volatility_per=intval(($avg_volatility[1]['per']+$avg_volatility[2]['per']+$avg_volatility[3]['per']+$avg_volatility[4]['per']+$avg_volatility[5]['per']+$avg_volatility[6]['per']+$avg_volatility[7]['per'])/(($count_up+$count_down)));
+$avg_volatility[1]['amount']	=intval($avg_volatility[1]['amount']	/$avg_volatility[1]['count']);
+$avg_volatility[1]['per']	=intval($avg_volatility[1]['per']	/$avg_volatility[1]['count']);
+$avg_volatility[2]['amount']	=intval($avg_volatility[2]['amount']	/$avg_volatility[2]['count']);
+$avg_volatility[2]['per']	=intval($avg_volatility[2]['per']	/$avg_volatility[2]['count']);
+$avg_volatility[3]['amount']	=intval($avg_volatility[3]['amount']	/$avg_volatility[3]['count']);
+$avg_volatility[3]['per']	=intval($avg_volatility[3]['per']	/$avg_volatility[3]['count']);
+$avg_volatility[4]['mount']	=intval($avg_volatility[4]['amount']	/$avg_volatility[4]['count']);
+$avg_volatility[4]['per']	=intval($avg_volatility[4]['per']	/$avg_volatility[4]['count']);
+$avg_volatility[5]['amount']	=intval($avg_volatility[5]['amount']	/$avg_volatility[5]['count']);
+$avg_volatility[5]['per']	=intval($avg_volatility[5]['per']	/$avg_volatility[5]['count']);
+$avg_volatility[6]['amount']	=intval($avg_volatility[6]['amount']	/$avg_volatility[6]['count']);
+$avg_volatility[6]['per']	=intval($avg_volatility[6]['per']	/$avg_volatility[7]['count']);
+$avg_volatility[7]['amount']	=intval($avg_volatility[7]['amount']	/$avg_volatility[7]['count']);
+$avg_volatility[7]['per']	=intval($avg_volatility[7]['per']	/$avg_volatility[7]['count']);
 
 //hour differences
 reset($data);
-$diff=array();
-$diff_count_up=array();
-$diff_count_down=array();
-
+$diff = $diff_count_up = $diff_count_down = array();
+$hour_buy = $hour_sell = $row_diff = ''; // Initialize to default values
 foreach($data as $row)
 {
 	$sql="SELECT * FROM ".$_GET['pair']."_diff WHERE `date`='$row[date]'";
-	$result_diff=mysql_query($sql);
-	if(mysql_num_rows($result_diff)<>1)
+	if (!$result_diff = $connect->query($sql)) die("Query failed: " . $connect->error);
+	if ($result_diff->num_rows <> 1)
 	{
 		//add differences - pair _diff
 		$values="'$row[date]'";
@@ -212,7 +237,7 @@ foreach($data as $row)
 	}
 	else
 	{
-		$row_diff=mysql_fetch_assoc($result_diff);
+		$row_diff = $result_diff->fetch_assoc();
 		//calculate hour differences
 		for($i=0;$i<=23;$i++)
 		{
@@ -238,13 +263,13 @@ $data_hrdiff=array();
 foreach($diff as $buy=>$row)
 {
 	array_push($data_hrdiff,array(
-								"buy"=>$buy,
-								"01"=>$row["01"],"02"=>$row["02"],"03"=>$row["03"],"04"=>$row["04"],
-								"05"=>$row["05"],"06"=>$row["06"],"07"=>$row["07"],"08"=>$row["08"],
-								"09"=>$row["09"],"10"=>$row["10"],"11"=>$row["11"],"12"=>$row["12"],
-								"13"=>$row["13"],"14"=>$row["14"],"15"=>$row["15"],"16"=>$row["16"],
-								"17"=>$row["17"],"18"=>$row["18"],"19"=>$row["19"],"20"=>$row["20"],
-								"21"=>$row["21"],"22"=>$row["22"],"23"=>$row["23"])
+								'buy'=>$buy,
+								'01'=>$row['01'],'02'=>$row['02'],'03'=>$row['03'],'04'=>$row['04'],
+								'05'=>$row['05'],'06'=>$row['06'],'07'=>$row['07'],'08'=>$row['08'],
+								'09'=>$row['09'],'10'=>$row['10'],'11'=>$row['11'],'12'=>$row['12'],
+								'13'=>$row['13'],'14'=>$row['14'],'15'=>$row['15'],'16'=>$row['16'],
+								'17'=>$row['17'],'18'=>$row['18'],'19'=>$row['19'],'20'=>$row['20'],
+								'21'=>$row['21'],'22'=>$row['22'],"23"=>$row['23'])
 				);
 }
 $data_hrdiff=json_encode($data_hrdiff);
@@ -256,13 +281,13 @@ for($i=0;$i<23;$i++)
 {
 	$hour_buy=str_pad($i,2,'0',STR_PAD_LEFT);
 	array_push($data_hrdiff_count,array(
-									"buy"=>$hour_buy,
-									"01"=>intval($diff_count_up[$hour_buy]["01"]/($diff_count_up[$hour_buy]["01"]+$diff_count_down[$hour_buy]["01"])*100),
-									"02"=>intval($diff_count_up[$hour_buy]["02"]/($diff_count_up[$hour_buy]["02"]+$diff_count_down[$hour_buy]["02"])*100),
-									"03"=>intval($diff_count_up[$hour_buy]["03"]/($diff_count_up[$hour_buy]["03"]+$diff_count_down[$hour_buy]["03"])*100),
-									"04"=>intval($diff_count_up[$hour_buy]["04"]/($diff_count_up[$hour_buy]["04"]+$diff_count_down[$hour_buy]["04"])*100),
-									"05"=>intval($diff_count_up[$hour_buy]["05"]/($diff_count_up[$hour_buy]["05"]+$diff_count_down[$hour_buy]["05"])*100),
-									"06"=>intval($diff_count_up[$hour_buy]["06"]/($diff_count_up[$hour_buy]["06"]+$diff_count_down[$hour_buy]["06"])*100),
+									'buy'=>$hour_buy,
+									'01'=>intval($diff_count_up[$hour_buy]['01']/($diff_count_up[$hour_buy]['01']+$diff_count_down[$hour_buy]['01'])*100),
+									"02"=>intval($diff_count_up[$hour_buy]['02']/($diff_count_up[$hour_buy]["02"]+$diff_count_down[$hour_buy]["02"])*100),
+									"03"=>intval($diff_count_up[$hour_buy]['03']/($diff_count_up[$hour_buy]["03"]+$diff_count_down[$hour_buy]["03"])*100),
+									"04"=>intval($diff_count_up[$hour_buy]['04']/($diff_count_up[$hour_buy]["04"]+$diff_count_down[$hour_buy]["04"])*100),
+									"05"=>intval($diff_count_up[$hour_buy]['05']/($diff_count_up[$hour_buy]["05"]+$diff_count_down[$hour_buy]["05"])*100),
+									"06"=>intval($diff_count_up[$hour_buy]['06']/($diff_count_up[$hour_buy]["06"]+$diff_count_down[$hour_buy]["06"])*100),
 									"07"=>intval($diff_count_up[$hour_buy]["07"]/($diff_count_up[$hour_buy]["07"]+$diff_count_down[$hour_buy]["07"])*100),
 									"08"=>intval($diff_count_up[$hour_buy]["08"]/($diff_count_up[$hour_buy]["08"]+$diff_count_down[$hour_buy]["08"])*100),
 									"09"=>intval($diff_count_up[$hour_buy]["09"]/($diff_count_up[$hour_buy]["09"]+$diff_count_down[$hour_buy]["09"])*100),
@@ -747,7 +772,7 @@ Date
 <input type="submit" name="go" value="2019" id="go_2019"/>
 <input type="submit" name="go" value="2018" id="go_2018"/>
 <input type="submit" name="go" value="2017" id="go_2017"/>
-<a href="?pair=<?=$_GET[pair]?>"><button type="button">Reset</button></a>
+<a href="?pair=<?=$_GET['pair']?>"><button type="button">Reset</button></a>
 <br/>
 Day
 <label><input type="checkbox" name="day[]" value="1" <?=$checked_day1?>/>1</label> 
@@ -808,35 +833,35 @@ Exclude Change % >
 <tr align="right">
 	<td align="center">No. of days :<br/><?=$count_up+$count_down?></td>
 	<td><font color="green">&#9650;<?=$count_up_per?>%<br/>&#9650;<?=$count_up?></font><br/><font color="red">&#9660;<?=$count_down?></td>
-	<td><font color="green">&#9650;<?=$count_day[1][per]?>%<br/>&#9650;<?=$count_day[1][up]?></font><br/><font color="red">&#9660;<?=$count_day[1][down]?></td>
-	<td><font color="green">&#9650;<?=$count_day[2][per]?>%<br/>&#9650;<?=$count_day[2][up]?></font><br/><font color="red">&#9660;<?=$count_day[2][down]?></td>
-	<td><font color="green">&#9650;<?=$count_day[3][per]?>%<br/>&#9650;<?=$count_day[3][up]?></font><br/><font color="red">&#9660;<?=$count_day[3][down]?></td>
-	<td><font color="green">&#9650;<?=$count_day[4][per]?>%<br/>&#9650;<?=$count_day[4][up]?></font><br/><font color="red">&#9660;<?=$count_day[4][down]?></td>
-	<td><font color="green">&#9650;<?=$count_day[5][per]?>%<br/>&#9650;<?=$count_day[5][up]?></font><br/><font color="red">&#9660;<?=$count_day[5][down]?></td>
-	<td><font color="green">&#9650;<?=$count_day[6][per]?>%<br/>&#9650;<?=$count_day[6][up]?></font><br/><font color="red">&#9660;<?=$count_day[6][down]?></td>
-	<td><font color="green">&#9650;<?=$count_day[7][per]?>%<br/>&#9650;<?=$count_day[7][up]?></font><br/><font color="red">&#9660;<?=$count_day[7][down]?></td>
+	<td><font color="green">&#9650;<?=$count_day[1]['per']?>%<br/>&#9650;<?=$count_day[1]['up']?></font><br/><font color="red">&#9660;<?=$count_day[1]['down']?></td>
+	<td><font color="green">&#9650;<?=$count_day[2]['per']?>%<br/>&#9650;<?=$count_day[2]['up']?></font><br/><font color="red">&#9660;<?=$count_day[2]['down']?></td>
+	<td><font color="green">&#9650;<?=$count_day[3]['per']?>%<br/>&#9650;<?=$count_day[3]['up']?></font><br/><font color="red">&#9660;<?=$count_day[3]['down']?></td>
+	<td><font color="green">&#9650;<?=$count_day[4]['per']?>%<br/>&#9650;<?=$count_day[4]['up']?></font><br/><font color="red">&#9660;<?=$count_day[4]['down']?></td>
+	<td><font color="green">&#9650;<?=$count_day[5]['per']?>%<br/>&#9650;<?=$count_day[5]['up']?></font><br/><font color="red">&#9660;<?=$count_day[5]['down']?></td>
+	<td><font color="green">&#9650;<?=$count_day[6]['per']?>%<br/>&#9650;<?=$count_day[6]['up']?></font><br/><font color="red">&#9660;<?=$count_day[6]['down']?></td>
+	<td><font color="green">&#9650;<?=$count_day[7]['per']?>%<br/>&#9650;<?=$count_day[7]['up']?></font><br/><font color="red">&#9660;<?=$count_day[7]['down']?></td>
 </tr>
 <tr align="right">
 	<td align="center">Average<br/>Change</td>
 	<td><?=$avg_per?>%<br/><?=$avg_amount?></td>
-	<td><?=$avg_day[1][per]?>%<br/><?=$avg_day[1][amount]?></td>
-	<td><?=$avg_day[2][per]?>%<br/><?=$avg_day[2][amount]?></td>
-	<td><?=$avg_day[3][per]?>%<br/><?=$avg_day[3][amount]?></td>
-	<td><?=$avg_day[4][per]?>%<br/><?=$avg_day[4][amount]?></td>
-	<td><?=$avg_day[5][per]?>%<br/><?=$avg_day[5][amount]?></td>
-	<td><?=$avg_day[6][per]?>%<br/><?=$avg_day[6][amount]?></td>
-	<td><?=$avg_day[7][per]?>%<br/><?=$avg_day[7][amount]?></td>
+	<td><?=$avg_day[1]['per']?>%<br/><?=$avg_day[1]['amount']?></td>
+	<td><?=$avg_day[2]['per']?>%<br/><?=$avg_day[2]['amount']?></td>
+	<td><?=$avg_day[3]['per']?>%<br/><?=$avg_day[3]['amount']?></td>
+	<td><?=$avg_day[4]['per']?>%<br/><?=$avg_day[4]['amount']?></td>
+	<td><?=$avg_day[5]['per']?>%<br/><?=$avg_day[5]['amount']?></td>
+	<td><?=$avg_day[6]['per']?>%<br/><?=$avg_day[6]['amount']?></td>
+	<td><?=$avg_day[7]['per']?>%<br/><?=$avg_day[7]['amount']?></td>
 </tr>
 <tr align="right">
 	<td align="center">Average<br/>Volatility</td>
 	<td><?=$avg_volatility_per?>%<br/><?=$avg_volatility_amount?></td>
-	<td><?=$avg_volatility[1][per]?>%<br/><?=$avg_volatility[1][amount]?></td>
-	<td><?=$avg_volatility[2][per]?>%<br/><?=$avg_volatility[2][amount]?></td>
-	<td><?=$avg_volatility[3][per]?>%<br/><?=$avg_volatility[3][amount]?></td>
-	<td><?=$avg_volatility[4][per]?>%<br/><?=$avg_volatility[4][amount]?></td>
-	<td><?=$avg_volatility[5][per]?>%<br/><?=$avg_volatility[5][amount]?></td>
-	<td><?=$avg_volatility[6][per]?>%<br/><?=$avg_volatility[6][amount]?></td>
-	<td><?=$avg_volatility[7][per]?>%<br/><?=$avg_volatility[7][amount]?></td>
+	<td><?=$avg_volatility[1]['per']?>%<br/><?=$avg_volatility[1]['amount']?></td>
+	<td><?=$avg_volatility[2]['per']?>%<br/><?=$avg_volatility[2]['amount']?></td>
+	<td><?=$avg_volatility[3]['per']?>%<br/><?=$avg_volatility[3]['amount']?></td>
+	<td><?=$avg_volatility[4]['per']?>%<br/><?=$avg_volatility[4]['amount']?></td>
+	<td><?=$avg_volatility[5]['per']?>%<br/><?=$avg_volatility[5]['amount']?></td>
+	<td><?=$avg_volatility[6]['per']?>%<br/><?=$avg_volatility[6]['amount']?></td>
+	<td><?=$avg_volatility[7]['per']?>%<br/><?=$avg_volatility[7]['amount']?></td>
 </tr>
 </table>
 <br/>
