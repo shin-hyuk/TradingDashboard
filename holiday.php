@@ -1,4 +1,5 @@
 <?php
+echo "hello";
 $connect = new mysqli('192.168.10.177', 'jason', 'Abc123456', 'stat_unisoft_hk', 3306);
 
 // Check the connection
